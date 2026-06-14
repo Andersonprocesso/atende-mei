@@ -34,6 +34,8 @@ export class BaileysWhatsappProvider implements WhatsappProvider {
   private conectando = false;
   private handler?: (msg: MensagemInbound) => Promise<void>;
   private readonly sessionRoot: string;
+  // mapeia telefone/identificador -> JID de resposta (suporta @s.whatsapp.net e @lid)
+  private readonly jidPorNumero = new Map<string, string>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -154,7 +156,8 @@ export class BaileysWhatsappProvider implements WhatsappProvider {
       return;
     }
     const jid: string = m.key.remoteJid ?? '';
-    if (!jid.endsWith('@s.whatsapp.net')) {
+    this.logger.log(`inbound key=${JSON.stringify(m.key)}`);
+    if (!jid.endsWith('@s.whatsapp.net') && !jid.endsWith('@lid')) {
       this.logger.log(`inbound ignorado (jid=${jid})`);
       return;
     }
@@ -169,12 +172,29 @@ export class BaileysWhatsappProvider implements WhatsappProvider {
       return;
     }
 
-    const numero = jid.split('@')[0];
-    this.logger.log(`inbound de +${numero}: ${texto.slice(0, 50)} (handler=${!!this.handler})`);
+    // Resolve o número real: prioriza senderPn (telefone) quando o jid é @lid.
+    const senderPn: string = m.key.senderPn ?? m.key.participantPn ?? '';
+    let numero: string;
+    let replyJid: string;
+    if (senderPn) {
+      numero = senderPn.replace(/\D/g, '');
+      replyJid = `${numero}@s.whatsapp.net`;
+    } else if (jid.endsWith('@s.whatsapp.net')) {
+      numero = jid.split('@')[0];
+      replyJid = jid;
+    } else {
+      // @lid sem telefone: usa o id do lid como identificador e responde no próprio @lid
+      numero = jid.split('@')[0];
+      replyJid = jid;
+    }
+
+    const telefoneWa = `+${numero}`;
+    this.jidPorNumero.set(telefoneWa, replyJid);
+    this.logger.log(`inbound ${telefoneWa} (jid=${replyJid}): ${texto.slice(0, 50)} (handler=${!!this.handler})`);
     if (this.handler) {
       await this.handler({
         tenantId: this.tenantId,
-        telefoneWa: `+${numero}`,
+        telefoneWa,
         texto,
         externalId: m.key.id,
       });
@@ -213,7 +233,10 @@ export class BaileysWhatsappProvider implements WhatsappProvider {
   // ───────── WhatsappProvider ─────────
 
   private jid(para: string) {
-    return `${para.replace(/\D/g, '')}@s.whatsapp.net`;
+    // usa o JID de resposta visto no inbound (suporta @lid); senão monta o padrão
+    return (
+      this.jidPorNumero.get(para) ?? `${para.replace(/\D/g, '')}@s.whatsapp.net`
+    );
   }
 
   async enviarTexto(para: string, texto: string): Promise<MensagemEnviada> {

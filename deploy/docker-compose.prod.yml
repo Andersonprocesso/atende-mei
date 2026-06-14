@@ -33,7 +33,15 @@ services:
       WHATSAPP_PROVIDER: mock
       AI_PROVIDER: mock
       PAYMENT_PROVIDER: mock
-      FISCAL_PROVIDER: fake
+      # fiscal: 'fake' por padrão; mude para 'omie' quando a config fiscal estiver pronta
+      FISCAL_PROVIDER: ${FISCAL_PROVIDER:-fake}
+      OMIE_APP_KEY: ${OMIE_APP_KEY:-}
+      OMIE_APP_SECRET: ${OMIE_APP_SECRET:-}
+      OMIE_AUTO_FATURAR: ${OMIE_AUTO_FATURAR:-false}
+      OMIE_COD_SERVICO: ${OMIE_COD_SERVICO:-}
+      OMIE_COD_CATEGORIA: ${OMIE_COD_CATEGORIA:-}
+      OMIE_COD_CONTA_CORRENTE: ${OMIE_COD_CONTA_CORRENTE:-}
+      OMIE_ALIQUOTA_ISS: ${OMIE_ALIQUOTA_ISS:-0}
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN}
       SEED_ON_BOOT: "true"
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL}

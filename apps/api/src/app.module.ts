@@ -7,6 +7,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { ClientesModule } from './modules/clientes/clientes.module';
 import { UsuariosModule } from './modules/usuarios/usuarios.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
+import { FiscalModule } from './modules/fiscal/fiscal.module';
 import { BootstrapModule } from './modules/bootstrap/bootstrap.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -22,9 +23,9 @@ import { RolesGuard } from './common/guards/roles.guard';
     ClientesModule,
     UsuariosModule,
     WhatsappModule,
+    FiscalModule,
     BootstrapModule,
-    // Próximas etapas: FiscalModule, PlanosModule,
-    // PagamentosModule, DashboardModule.
+    // Próximas etapas: PlanosModule, PagamentosModule, DashboardModule.
   ],
   providers: [
     // JWT global (rotas marcadas com @Public ficam livres), depois papéis.

@@ -57,6 +57,17 @@ export class BaileysWhatsappProvider implements WhatsappProvider {
     if (this.conectando) return;
     this.conectando = true;
     try {
+      // derruba qualquer socket anterior para evitar instâncias concorrentes
+      if (this.sock) {
+        try {
+          this.sock.ev.removeAllListeners();
+          this.sock.end(undefined);
+        } catch {
+          /* ignore */
+        }
+        this.sock = null;
+      }
+
       const {
         useMultiFileAuthState,
         DisconnectReason,
@@ -120,6 +131,9 @@ export class BaileysWhatsappProvider implements WhatsappProvider {
       });
 
       this.sock.ev.on('messages.upsert', async ({ messages, type }: any) => {
+        this.logger.log(
+          `messages.upsert type=${type} n=${messages?.length ?? 0}`,
+        );
         if (type !== 'notify') return;
         for (const m of messages) {
           try {
@@ -135,18 +149,28 @@ export class BaileysWhatsappProvider implements WhatsappProvider {
   }
 
   private async processarInbound(m: any) {
-    if (!m.message || m.key.fromMe) return;
+    if (!m.message || m.key.fromMe) {
+      this.logger.log(`inbound ignorado (fromMe=${m.key?.fromMe} semMsg=${!m.message})`);
+      return;
+    }
     const jid: string = m.key.remoteJid ?? '';
-    if (!jid.endsWith('@s.whatsapp.net')) return; // ignora grupos/status
+    if (!jid.endsWith('@s.whatsapp.net')) {
+      this.logger.log(`inbound ignorado (jid=${jid})`);
+      return;
+    }
     const texto =
       m.message.conversation ??
       m.message.extendedTextMessage?.text ??
       m.message.imageMessage?.caption ??
       m.message.documentMessage?.caption ??
       '';
-    if (!texto.trim()) return;
+    if (!texto.trim()) {
+      this.logger.log(`inbound sem texto (keys=${Object.keys(m.message)})`);
+      return;
+    }
 
     const numero = jid.split('@')[0];
+    this.logger.log(`inbound de +${numero}: ${texto.slice(0, 50)} (handler=${!!this.handler})`);
     if (this.handler) {
       await this.handler({
         tenantId: this.tenantId,

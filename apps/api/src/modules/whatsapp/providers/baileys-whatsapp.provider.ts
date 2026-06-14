@@ -133,9 +133,6 @@ export class BaileysWhatsappProvider implements WhatsappProvider {
       });
 
       this.sock.ev.on('messages.upsert', async ({ messages, type }: any) => {
-        this.logger.log(
-          `messages.upsert type=${type} n=${messages?.length ?? 0}`,
-        );
         if (type !== 'notify') return;
         for (const m of messages) {
           try {
@@ -151,26 +148,16 @@ export class BaileysWhatsappProvider implements WhatsappProvider {
   }
 
   private async processarInbound(m: any) {
-    if (!m.message || m.key.fromMe) {
-      this.logger.log(`inbound ignorado (fromMe=${m.key?.fromMe} semMsg=${!m.message})`);
-      return;
-    }
+    if (!m.message || m.key.fromMe) return;
     const jid: string = m.key.remoteJid ?? '';
-    this.logger.log(`inbound key=${JSON.stringify(m.key)}`);
-    if (!jid.endsWith('@s.whatsapp.net') && !jid.endsWith('@lid')) {
-      this.logger.log(`inbound ignorado (jid=${jid})`);
-      return;
-    }
+    if (!jid.endsWith('@s.whatsapp.net') && !jid.endsWith('@lid')) return;
     const texto =
       m.message.conversation ??
       m.message.extendedTextMessage?.text ??
       m.message.imageMessage?.caption ??
       m.message.documentMessage?.caption ??
       '';
-    if (!texto.trim()) {
-      this.logger.log(`inbound sem texto (keys=${Object.keys(m.message)})`);
-      return;
-    }
+    if (!texto.trim()) return;
 
     // Identidade do cliente: usa o telefone real (senderPn) quando disponível.
     const senderPn: string = m.key.senderPn ?? m.key.participantPn ?? '';
@@ -181,7 +168,7 @@ export class BaileysWhatsappProvider implements WhatsappProvider {
 
     const telefoneWa = `+${numero}`;
     this.jidPorNumero.set(telefoneWa, replyJid);
-    this.logger.log(`inbound ${telefoneWa} (jid=${replyJid}): ${texto.slice(0, 50)} (handler=${!!this.handler})`);
+    this.logger.log(`mensagem recebida de ...${numero.slice(-4)}`);
     if (this.handler) {
       await this.handler({
         tenantId: this.tenantId,

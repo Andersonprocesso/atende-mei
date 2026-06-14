@@ -12,6 +12,7 @@ interface ClienteFicha extends Cliente {
   temCertificado: boolean;
   cpfProprietario: string | null;
   omieCodigoCliente: string | null;
+  driveFolderId: string | null;
   assinaturas: { id: string; status: string; plano: { nome: string } }[];
   _count: { notas: number; guias: number; conversas: number };
 }
@@ -59,6 +60,7 @@ export default function ClienteDetalhe() {
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge situacao={cliente.situacaoFiscal} />
+          <BotaoDrive cliente={cliente} onCriado={carregar} />
           <button
             onClick={() => setEditando(true)}
             className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 hover:bg-slate-50"
@@ -138,6 +140,38 @@ interface Lancamento {
   valor: string;
   descricao: string | null;
   origem: string;
+}
+
+function BotaoDrive({ cliente, onCriado }: { cliente: ClienteFicha; onCriado: () => void }) {
+  const [carregando, setCarregando] = useState(false);
+
+  async function acao() {
+    if (cliente.driveFolderId) {
+      window.open(`https://drive.google.com/drive/folders/${cliente.driveFolderId}`, '_blank');
+      return;
+    }
+    setCarregando(true);
+    try {
+      const r = await api.post<{ link: string }>(`/drive/cliente/${cliente.id}/pasta`);
+      window.open(r.link, '_blank');
+      onCriado();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Erro ao criar pasta');
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={acao}
+      disabled={carregando}
+      className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 hover:bg-slate-50 disabled:opacity-60"
+      title="Pasta no Google Drive (AtendeMEI)"
+    >
+      {carregando ? '…' : cliente.driveFolderId ? '📁 Abrir Drive' : '📁 Criar pasta'}
+    </button>
+  );
 }
 
 function FaturamentoMei({ clienteId }: { clienteId: string }) {

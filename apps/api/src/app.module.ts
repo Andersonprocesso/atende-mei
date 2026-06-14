@@ -11,6 +11,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { FiscalModule } from './modules/fiscal/fiscal.module';
 import { SerproModule } from './modules/serpro/serpro.module';
 import { FaturamentoModule } from './modules/faturamento/faturamento.module';
+import { DriveModule } from './modules/drive/drive.module';
 import { BootstrapModule } from './modules/bootstrap/bootstrap.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -30,6 +31,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     FiscalModule,
     SerproModule,
     FaturamentoModule,
+    DriveModule,
     BootstrapModule,
     // Próximas etapas: PlanosModule, PagamentosModule, DashboardModule.
   ],

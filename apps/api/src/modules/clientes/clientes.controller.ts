@@ -59,4 +59,23 @@ export class ClientesController {
   deactivate(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.clientes.deactivate(user.tenantId, user.sub, id);
   }
+
+  // Exclusão definitiva (somente ADMIN).
+  @Roles(UserRole.ADMIN)
+  @Delete(':id/remover')
+  remover(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.clientes.remover(user.tenantId, user.sub, id);
+  }
+
+  // Upload do certificado A1 individual do MEI.
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Post(':id/certificado')
+  salvarCertificado(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body()
+    body: { pfxBase64: string; senha: string; nome?: string; validade?: string },
+  ) {
+    return this.clientes.salvarCertificado(user.tenantId, user.sub, id, body);
+  }
 }

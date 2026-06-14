@@ -180,7 +180,11 @@ model Cliente {
   // O arquivo/senha devem ser guardados cifrados em cofre dedicado (ver README/LGPD).
   certificadoNome      String?
   certificadoValidade  DateTime?
-  certificadoRefCofre  String? // ponteiro para secret manager, nunca o conteúdo
+  certificadoRefCofre  String? // ponteiro para secret manager (legado)
+  // certificado A1 do próprio MEI, cifrado em repouso (AES-GCM)
+  certificadoPfxEnc    String?
+  certificadoSenhaEnc  String?
+  certificadoFingerprint String?
 
   ativo        Boolean  @default(true)
   criadoEm     DateTime @default(now())

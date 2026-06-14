@@ -3,9 +3,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { CryptoService } from '../../common/crypto.service';
 import { CreateClienteDto } from './dto/create-cliente.dto';
 import { UpdateClienteDto } from './dto/update-cliente.dto';
 import { QueryClientesDto } from './dto/query-clientes.dto';
@@ -17,6 +19,7 @@ export class ClientesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly cripto: CryptoService,
   ) {}
 
   async list(tenantId: string, query: QueryClientesDto) {
@@ -75,7 +78,9 @@ export class ClientesService {
       },
     });
     if (!cliente) throw new NotFoundException('Cliente não encontrado');
-    return cliente;
+    // nunca expor o conteúdo cifrado do certificado/senha
+    const { certificadoPfxEnc, certificadoSenhaEnc, ...resto } = cliente;
+    return { ...resto, temCertificado: !!certificadoPfxEnc };
   }
 
   async create(tenantId: string, usuarioId: string, dto: CreateClienteDto) {
@@ -181,6 +186,51 @@ export class ClientesService {
       dados: { total: itens.length, criados, atualizados },
     });
     return { total: itens.length, criados, atualizados };
+  }
+
+  // Sobe/atualiza o certificado A1 do MEI (cifrado em repouso).
+  async salvarCertificado(
+    tenantId: string,
+    usuarioId: string,
+    id: string,
+    input: { pfxBase64: string; senha: string; nome?: string; validade?: string },
+  ) {
+    await this.ensureExists(tenantId, id);
+    const pfx = Buffer.from(input.pfxBase64, 'base64');
+    const fingerprint = crypto.createHash('sha256').update(pfx).digest('hex');
+
+    await this.prisma.cliente.update({
+      where: { id },
+      data: {
+        certificadoPfxEnc: this.cripto.encrypt(pfx),
+        certificadoSenhaEnc: this.cripto.encrypt(input.senha),
+        certificadoFingerprint: fingerprint,
+        certificadoNome: input.nome,
+        certificadoValidade: input.validade ? new Date(input.validade) : undefined,
+      },
+    });
+    await this.audit.log({
+      tenantId,
+      usuarioId,
+      acao: 'cliente.certificado.salvar',
+      entidade: 'Cliente',
+      entidadeId: id,
+    });
+    return { ok: true, fingerprint };
+  }
+
+  // Exclusão definitiva (cascata em conversas/notas/guias). Use com cuidado.
+  async remover(tenantId: string, usuarioId: string, id: string) {
+    await this.ensureExists(tenantId, id);
+    await this.prisma.cliente.delete({ where: { id } });
+    await this.audit.log({
+      tenantId,
+      usuarioId,
+      acao: 'cliente.remover',
+      entidade: 'Cliente',
+      entidadeId: id,
+    });
+    return { ok: true };
   }
 
   private async ensureExists(tenantId: string, id: string) {

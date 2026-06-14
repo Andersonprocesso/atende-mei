@@ -115,6 +115,7 @@ model Tenant {
   auditorias  AuditLog[]
   credencialSerpro CredencialSerpro?
   whatsappConexao  WhatsappConexao?
+  faturamentos     LancamentoFaturamento[]
 
   @@map("tenants")
 }
@@ -201,6 +202,10 @@ model Cliente {
   certificadoPfxEnc    String?
   certificadoSenhaEnc  String?
   certificadoFingerprint String?
+  // pasta do MEI no Google Drive (espelho de documentos)
+  driveFolderId        String?
+  // marca o último alerta de limite enviado no ano (evita repetir): "AAAA:NN"
+  limiteAlertaEnviado  String?
 
   ativo        Boolean  @default(true)
   criadoEm     DateTime @default(now())
@@ -212,6 +217,7 @@ model Cliente {
   guias       GuiaDAS[]
   assinaturas Assinatura[]
   pagamentos  Pagamento[]
+  faturamentos LancamentoFaturamento[]
 
   @@unique([tenantId, cnpj])
   @@unique([tenantId, telefoneWa])
@@ -394,6 +400,29 @@ model Pagamento {
   @@index([tenantId, status])
   @@index([clienteId])
   @@map("pagamentos")
+}
+
+// ─────────────────────────── Faturamento do MEI ───────────────────────────
+
+// Lançamentos de receita do MEI (alimentam o controle de limite anual e a DASN).
+model LancamentoFaturamento {
+  id           String   @id @default(uuid())
+  tenantId     String
+  clienteId    String
+  competencia  String // "AAAA-MM"
+  ano          Int
+  valor        Decimal  @db.Decimal(12, 2)
+  descricao    String?
+  origem       String   @default("MANUAL") // MANUAL | NFSE
+  notaFiscalId String?
+  criadoEm     DateTime @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, clienteId, ano])
+  @@index([tenantId, ano])
+  @@map("lancamentos_faturamento")
 }
 
 // ─────────────────────────── Auditoria (LGPD) ───────────────────────────

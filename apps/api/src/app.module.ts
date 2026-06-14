@@ -10,6 +10,7 @@ import { UsuariosModule } from './modules/usuarios/usuarios.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { FiscalModule } from './modules/fiscal/fiscal.module';
 import { SerproModule } from './modules/serpro/serpro.module';
+import { FaturamentoModule } from './modules/faturamento/faturamento.module';
 import { BootstrapModule } from './modules/bootstrap/bootstrap.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -28,6 +29,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     WhatsappModule,
     FiscalModule,
     SerproModule,
+    FaturamentoModule,
     BootstrapModule,
     // Próximas etapas: PlanosModule, PagamentosModule, DashboardModule.
   ],

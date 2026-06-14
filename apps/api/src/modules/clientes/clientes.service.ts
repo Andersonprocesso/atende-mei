@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
+import * as forge from 'node-forge';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -199,14 +200,18 @@ export class ClientesService {
     const pfx = Buffer.from(input.pfxBase64, 'base64');
     const fingerprint = crypto.createHash('sha256').update(pfx).digest('hex');
 
+    // Extrai validade e titular direto do PFX (não depende de digitação).
+    const meta = this.lerCertificado(pfx, input.senha);
+    const validade = meta?.validade ?? (input.validade ? new Date(input.validade) : undefined);
+
     await this.prisma.cliente.update({
       where: { id },
       data: {
         certificadoPfxEnc: this.cripto.encrypt(pfx),
         certificadoSenhaEnc: this.cripto.encrypt(input.senha),
         certificadoFingerprint: fingerprint,
-        certificadoNome: input.nome,
-        certificadoValidade: input.validade ? new Date(input.validade) : undefined,
+        certificadoNome: input.nome ?? meta?.titular,
+        certificadoValidade: validade,
       },
     });
     await this.audit.log({
@@ -231,6 +236,62 @@ export class ClientesService {
       entidadeId: id,
     });
     return { ok: true };
+  }
+
+  // Lê validade (notAfter) e titular (CN) de um .pfx. Retorna null se a senha
+  // estiver incorreta ou o arquivo não puder ser lido.
+  private lerCertificado(
+    pfx: Buffer,
+    senha: string,
+  ): { validade: Date; titular?: string } | null {
+    try {
+      const p12Der = forge.util.createBuffer(pfx.toString('binary'));
+      const p12Asn1 = forge.asn1.fromDer(p12Der);
+      const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, senha);
+      for (const safeContents of p12.safeContents) {
+        for (const bag of safeContents.safeBags) {
+          if (bag.type === forge.pki.oids.certBag && bag.cert) {
+            const cert = bag.cert;
+            const cn = cert.subject.getField('CN');
+            return {
+              validade: cert.validity.notAfter,
+              titular: cn?.value,
+            };
+          }
+        }
+      }
+    } catch {
+      /* senha errada ou arquivo inválido */
+    }
+    return null;
+  }
+
+  // Certificados vencendo dentro de N dias (ou já vencidos).
+  async certificadosVencendo(tenantId: string, dias = 30) {
+    const limite = new Date();
+    limite.setDate(limite.getDate() + dias);
+    const clientes = await this.prisma.cliente.findMany({
+      where: {
+        tenantId,
+        certificadoValidade: { not: null, lte: limite },
+      },
+      select: {
+        id: true,
+        razaoSocial: true,
+        nomeFantasia: true,
+        cnpj: true,
+        certificadoNome: true,
+        certificadoValidade: true,
+      },
+      orderBy: { certificadoValidade: 'asc' },
+    });
+    const hoje = new Date();
+    return clientes.map((c) => ({
+      ...c,
+      diasRestantes: c.certificadoValidade
+        ? Math.ceil((c.certificadoValidade.getTime() - hoje.getTime()) / 86400000)
+        : null,
+    }));
   }
 
   private async ensureExists(tenantId: string, id: string) {

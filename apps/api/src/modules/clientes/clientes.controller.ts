@@ -27,6 +27,15 @@ export class ClientesController {
     return this.clientes.list(user.tenantId, query);
   }
 
+  // Certificados vencendo (default 30 dias).
+  @Get('certificados/vencendo')
+  certificadosVencendo(
+    @CurrentUser() user: AuthUser,
+    @Query('dias') dias?: string,
+  ) {
+    return this.clientes.certificadosVencendo(user.tenantId, dias ? Number(dias) : 30);
+  }
+
   @Get(':id')
   findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.clientes.findOne(user.tenantId, id);

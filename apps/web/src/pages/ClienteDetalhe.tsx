@@ -104,6 +104,8 @@ export default function ClienteDetalhe() {
         )}
       </Secao>
 
+      <FaturamentoMei clienteId={cliente.id} />
+
       <GerarDasMei clienteId={cliente.id} />
 
       <CertificadoMei cliente={cliente} onSalvo={carregar} />
@@ -119,6 +121,116 @@ export default function ClienteDetalhe() {
         />
       )}
     </div>
+  );
+}
+
+interface ResumoFat {
+  ano: number;
+  total: number;
+  limite: number;
+  percentual: number;
+  restante: number;
+  status: 'OK' | 'ATENCAO' | 'ALERTA' | 'ESTOURADO';
+}
+interface Lancamento {
+  id: string;
+  competencia: string;
+  valor: string;
+  descricao: string | null;
+  origem: string;
+}
+
+function FaturamentoMei({ clienteId }: { clienteId: string }) {
+  const hoje = new Date();
+  const [dados, setDados] = useState<{ resumo: ResumoFat; lancamentos: Lancamento[] } | null>(null);
+  const [competencia, setComp] = useState(
+    `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`,
+  );
+  const [valor, setValor] = useState('');
+  const [descricao, setDescricao] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  function carregar() {
+    api
+      .get<{ resumo: ResumoFat; lancamentos: Lancamento[] }>(`/faturamento/cliente/${clienteId}`)
+      .then(setDados)
+      .catch(() => {});
+  }
+  useEffect(carregar, [clienteId]);
+
+  async function lancar() {
+    const v = parseFloat(valor.replace('.', '').replace(',', '.'));
+    if (!Number.isFinite(v) || v <= 0) return;
+    setSalvando(true);
+    try {
+      await api.post(`/faturamento/cliente/${clienteId}`, { competencia, valor: v, descricao: descricao || undefined });
+      setValor('');
+      setDescricao('');
+      carregar();
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  const r = dados?.resumo;
+  const cor =
+    r?.status === 'ESTOURADO'
+      ? 'bg-red-500'
+      : r?.status === 'ALERTA'
+        ? 'bg-orange-500'
+        : r?.status === 'ATENCAO'
+          ? 'bg-amber-400'
+          : 'bg-brand';
+  const fmt = (v: number) => v.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+
+  return (
+    <Secao titulo="Faturamento & limite do MEI">
+      {r && (
+        <>
+          <div className="flex justify-between text-sm mb-1">
+            <span>Ano {r.ano}: <b>R$ {fmt(r.total)}</b> de R$ {fmt(r.limite)}</span>
+            <span className={r.status === 'OK' ? 'text-brand-dark' : 'text-orange-600'}>{r.percentual}%</span>
+          </div>
+          <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden mb-1">
+            <div className={`h-3 ${cor}`} style={{ width: `${Math.min(r.percentual, 100)}%` }} />
+          </div>
+          <div className="text-xs text-slate-500 mb-4">
+            {r.status === 'ESTOURADO'
+              ? '🚨 Limite ultrapassado — orientar desenquadramento.'
+              : `Restam R$ ${fmt(r.restante)} até o limite. Base para a DASN-SIMEI ${r.ano + 1}.`}
+          </div>
+        </>
+      )}
+
+      <div className="flex items-end gap-2 flex-wrap mb-4">
+        <label className="text-sm">
+          <span className="block font-medium mb-1">Competência</span>
+          <input type="month" value={competencia} onChange={(e) => setComp(e.target.value)} className="input" />
+        </label>
+        <label className="text-sm">
+          <span className="block font-medium mb-1">Valor (R$)</span>
+          <input value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0,00" className="input w-28" />
+        </label>
+        <label className="text-sm flex-1 min-w-[140px]">
+          <span className="block font-medium mb-1">Descrição</span>
+          <input value={descricao} onChange={(e) => setDescricao(e.target.value)} className="input" />
+        </label>
+        <button onClick={lancar} disabled={salvando} className="bg-brand hover:bg-brand-dark text-white rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-60">
+          {salvando ? '…' : 'Lançar'}
+        </button>
+      </div>
+
+      {dados && dados.lancamentos.length > 0 && (
+        <div className="text-sm border-t border-slate-100 pt-2">
+          {dados.lancamentos.slice(0, 6).map((l) => (
+            <div key={l.id} className="flex justify-between py-1">
+              <span className="text-slate-500">{l.competencia} {l.descricao ? `· ${l.descricao}` : ''}</span>
+              <span>R$ {fmt(Number(l.valor))}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Secao>
   );
 }
 

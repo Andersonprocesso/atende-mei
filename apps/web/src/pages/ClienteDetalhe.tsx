@@ -112,6 +112,8 @@ export default function ClienteDetalhe() {
 
       <CertificadoMei cliente={cliente} onSalvo={carregar} />
 
+      <NfeEntradaMei clienteId={cliente.id} temCertificado={cliente.temCertificado} />
+
       {editando && (
         <EditarClienteModal
           cliente={cliente}
@@ -343,6 +345,92 @@ function GerarDasMei({ clienteId }: { clienteId: string }) {
             </button>
           )}
         </div>
+      )}
+    </Secao>
+  );
+}
+
+interface NfeEntrada {
+  id: string;
+  chave: string;
+  emitenteNome: string | null;
+  emitenteCnpj: string | null;
+  valorTotal: string | null;
+  dataEmissao: string | null;
+  situacao: string | null;
+}
+
+function NfeEntradaMei({ clienteId, temCertificado }: { clienteId: string; temCertificado: boolean }) {
+  const [notas, setNotas] = useState<NfeEntrada[]>([]);
+  const [buscando, setBuscando] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  function carregar() {
+    api.get<NfeEntrada[]>(`/nfe/cliente/${clienteId}`).then(setNotas).catch(() => {});
+  }
+  useEffect(carregar, [clienteId]);
+
+  async function buscar() {
+    setBuscando(true);
+    setMsg(null);
+    try {
+      const r = await api.post<{ baixadas: number; cstat: string; motivo: string }>(
+        `/nfe/cliente/${clienteId}/buscar`,
+      );
+      setMsg(`${r.baixadas} nova(s) nota(s). SEFAZ: ${r.cstat} ${r.motivo || ''}`);
+      carregar();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : 'Erro na busca');
+    } finally {
+      setBuscando(false);
+    }
+  }
+
+  const fmt = (v: string | null) => (v ? Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '—');
+
+  return (
+    <Secao titulo="NF-e de entrada (SEFAZ)">
+      <div className="flex items-center gap-3 mb-3">
+        <button
+          onClick={buscar}
+          disabled={buscando || !temCertificado}
+          className="bg-brand hover:bg-brand-dark text-white rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-60"
+          title={!temCertificado ? 'Cadastre o certificado A1 do MEI primeiro' : ''}
+        >
+          {buscando ? 'Buscando na SEFAZ…' : 'Buscar NF-e na SEFAZ'}
+        </button>
+        {!temCertificado && (
+          <span className="text-xs text-amber-600">Requer o certificado A1 do MEI.</span>
+        )}
+      </div>
+      {msg && <div className="text-sm text-slate-500 mb-3">{msg}</div>}
+
+      {notas.length === 0 ? (
+        <p className="text-slate-400 text-sm">Nenhuma NF-e de entrada baixada ainda.</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead className="text-slate-500 text-left">
+            <tr>
+              <th className="py-1 font-medium">Emitente</th>
+              <th className="py-1 font-medium">Data</th>
+              <th className="py-1 font-medium text-right">Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {notas.map((n) => (
+              <tr key={n.id} className="border-t border-slate-100">
+                <td className="py-1">
+                  <div>{n.emitenteNome ?? '—'}</div>
+                  <div className="text-xs text-slate-400 font-mono">{n.chave.slice(0, 24)}…</div>
+                </td>
+                <td className="py-1">
+                  {n.dataEmissao ? new Date(n.dataEmissao).toLocaleDateString('pt-BR') : '—'}
+                </td>
+                <td className="py-1 text-right">R$ {fmt(n.valorTotal)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </Secao>
   );

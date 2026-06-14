@@ -116,6 +116,7 @@ model Tenant {
   credencialSerpro CredencialSerpro?
   whatsappConexao  WhatsappConexao?
   faturamentos     LancamentoFaturamento[]
+  nfeEntradas      NfeEntrada[]
 
   @@map("tenants")
 }
@@ -206,6 +207,9 @@ model Cliente {
   driveFolderId        String?
   // marca o último alerta de limite enviado no ano (evita repetir): "AAAA:NN"
   limiteAlertaEnviado  String?
+  // UF (sigla) usada na busca de NF-e na SEFAZ; cursor de distribuição (NSU)
+  uf                   String?  @default("SP")
+  nfeUltimoNsu         String?  @default("0")
 
   ativo        Boolean  @default(true)
   criadoEm     DateTime @default(now())
@@ -218,6 +222,7 @@ model Cliente {
   assinaturas Assinatura[]
   pagamentos  Pagamento[]
   faturamentos LancamentoFaturamento[]
+  nfeEntradas NfeEntrada[]
 
   @@unique([tenantId, cnpj])
   @@unique([tenantId, telefoneWa])
@@ -423,6 +428,32 @@ model LancamentoFaturamento {
   @@index([tenantId, clienteId, ano])
   @@index([tenantId, ano])
   @@map("lancamentos_faturamento")
+}
+
+// ─────────────────────────── NF-e de entrada (SEFAZ) ───────────────────────────
+
+// Notas fiscais eletrônicas destinadas ao MEI (compras/entrada), baixadas da
+// SEFAZ via NFeDistribuicaoDFe.
+model NfeEntrada {
+  id            String    @id @default(uuid())
+  tenantId      String
+  clienteId     String
+  chave         String // chave de acesso (44 díg.)
+  nsu           String?
+  modelo        String?
+  situacao      String? // resumo | completa
+  emitenteCnpj  String?
+  emitenteNome  String?
+  valorTotal    Decimal?  @db.Decimal(12, 2)
+  dataEmissao   DateTime?
+  criadoEm      DateTime  @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@unique([clienteId, chave])
+  @@index([tenantId, clienteId])
+  @@map("nfe_entradas")
 }
 
 // ─────────────────────────── Auditoria (LGPD) ───────────────────────────

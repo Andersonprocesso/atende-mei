@@ -12,6 +12,8 @@ import { FiscalModule } from './modules/fiscal/fiscal.module';
 import { SerproModule } from './modules/serpro/serpro.module';
 import { FaturamentoModule } from './modules/faturamento/faturamento.module';
 import { DriveModule } from './modules/drive/drive.module';
+import { PlanosModule } from './modules/planos/planos.module';
+import { NfeModule } from './modules/nfe/nfe.module';
 import { BootstrapModule } from './modules/bootstrap/bootstrap.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -32,6 +34,8 @@ import { RolesGuard } from './common/guards/roles.guard';
     SerproModule,
     FaturamentoModule,
     DriveModule,
+    PlanosModule,
+    NfeModule,
     BootstrapModule,
     // Próximas etapas: PlanosModule, PagamentosModule, DashboardModule.
   ],

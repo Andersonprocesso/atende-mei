@@ -42,12 +42,22 @@ services:
       OMIE_COD_CATEGORIA: ${OMIE_COD_CATEGORIA:-}
       OMIE_COD_CONTA_CORRENTE: ${OMIE_COD_CONTA_CORRENTE:-}
       OMIE_ALIQUOTA_ISS: ${OMIE_ALIQUOTA_ISS:-0}
+      # SERPRO Integra Contador (DAS-MEI) — credenciais da Dias de Paula
+      SERPRO_CONSUMER_KEY: ${SERPRO_CONSUMER_KEY:-}
+      SERPRO_CONSUMER_SECRET: ${SERPRO_CONSUMER_SECRET:-}
+      SERPRO_CERT_PFX_PATH: ${SERPRO_CERT_PFX_PATH:-/certs/diasdepaula.pfx}
+      SERPRO_CERT_PFX_BASE64: ${SERPRO_CERT_PFX_BASE64:-}
+      SERPRO_CERT_SENHA: ${SERPRO_CERT_SENHA:-}
+      SERPRO_CONTRATANTE_CNPJ: ${SERPRO_CONTRATANTE_CNPJ:-09377184000188}
+      SERPRO_AUTOR_CNPJ: ${SERPRO_AUTOR_CNPJ:-09377184000188}
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN}
       SEED_ON_BOOT: "true"
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
     networks:
       - atendemei_net
+    volumes:
+      - ./certs:/certs:ro
     depends_on:
       postgres:
         condition: service_healthy

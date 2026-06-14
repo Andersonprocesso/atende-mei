@@ -14,6 +14,7 @@ interface EntradaConversa {
   texto: string;
   estado: string | null;
   contexto: Record<string, unknown>;
+  tenantId: string;
   cliente: { id: string; cnpj: string | null; nomeContato: string | null };
 }
 
@@ -25,7 +26,7 @@ export class ConversationStateMachine {
   constructor(@Inject(AI_ASSISTANT) private readonly ai: AIAssistant) {}
 
   async processar(input: EntradaConversa): Promise<ResultadoConversa> {
-    const { texto, estado, contexto, cliente } = input;
+    const { texto, estado, contexto, cliente, tenantId } = input;
     const t = texto.trim();
     const tl = t.toLowerCase();
 
@@ -59,7 +60,7 @@ export class ConversationStateMachine {
       case Estados.DAS_CONFIRMAR:
         return this.dasConfirmar(tl, contexto);
       default:
-        return this.rotearIntencao(t, contexto);
+        return this.rotearIntencao(t, contexto, tenantId);
     }
   }
 
@@ -67,6 +68,7 @@ export class ConversationStateMachine {
   private async rotearIntencao(
     texto: string,
     contexto: Record<string, unknown>,
+    tenantId: string,
   ): Promise<ResultadoConversa> {
     const { intencao, slots } = await this.ai.detectarIntencao(texto);
 
@@ -117,7 +119,7 @@ export class ConversationStateMachine {
 
       case Intencao.CONSULTOR:
       default: {
-        const resposta = await this.ai.responderConsultor(texto);
+        const resposta = await this.ai.responderConsultor(texto, { tenantId });
         return {
           respostas: [resposta, 'Posso ajudar em mais algo? (digite *menu*)'],
           novoEstado: null,

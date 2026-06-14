@@ -21,6 +21,7 @@ describe('ConversationStateMachine', () => {
       texto: 'oi',
       estado: null,
       contexto: {},
+      tenantId: 't1',
       cliente: { id: 'c2', cnpj: null, nomeContato: null },
     });
     expect(r.novoEstado).toBe(Estados.ONBOARDING_CNPJ);
@@ -33,6 +34,7 @@ describe('ConversationStateMachine', () => {
       texto: '98.765.432/0001-11',
       estado: Estados.ONBOARDING_CNPJ,
       contexto: {},
+      tenantId: 't1',
       cliente: { id: 'c2', cnpj: null, nomeContato: null },
     });
     expect(r.atualizarCliente?.cnpj).toBe('98765432000111');
@@ -50,6 +52,7 @@ describe('ConversationStateMachine', () => {
       texto: 'quero emitir uma nota',
       estado: null,
       contexto: {},
+      tenantId: 't1',
       cliente,
     });
     expect(r.novoEstado).toBe(Estados.NFSE_TOMADOR);
@@ -62,6 +65,7 @@ describe('ConversationStateMachine', () => {
       texto: 'Maria Souza',
       estado: Estados.NFSE_TOMADOR,
       contexto: { nfse: {} },
+      tenantId: 't1',
       cliente,
     });
     expect(r1.novoEstado).toBe(Estados.NFSE_DESCRICAO);
@@ -70,6 +74,7 @@ describe('ConversationStateMachine', () => {
       texto: 'Consultoria de marketing',
       estado: Estados.NFSE_DESCRICAO,
       contexto: r1.novoContexto,
+      tenantId: 't1',
       cliente,
     });
     expect(r2.novoEstado).toBe(Estados.NFSE_VALOR);
@@ -78,6 +83,7 @@ describe('ConversationStateMachine', () => {
       texto: '150,00',
       estado: Estados.NFSE_VALOR,
       contexto: r2.novoContexto,
+      tenantId: 't1',
       cliente,
     });
     expect(r3.novoEstado).toBe(Estados.NFSE_CONFIRMAR);
@@ -86,6 +92,7 @@ describe('ConversationStateMachine', () => {
       texto: 'sim',
       estado: Estados.NFSE_CONFIRMAR,
       contexto: r3.novoContexto,
+      tenantId: 't1',
       cliente,
     });
     expect(r4.acaoPendente?.tipo).toBe('EMITIR_NFSE');
@@ -108,6 +115,7 @@ describe('ConversationStateMachine', () => {
       texto: 'quero falar com um atendente',
       estado: null,
       contexto: {},
+      tenantId: 't1',
       cliente,
     });
     expect(r.handoff).toBe(true);

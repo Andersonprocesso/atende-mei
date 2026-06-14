@@ -79,6 +79,7 @@ export class ConversationService {
       texto: msg.texto,
       estado: conversa.estado,
       contexto,
+      tenantId: msg.tenantId,
       cliente: {
         id: cliente.id,
         cnpj: cliente.cnpj,

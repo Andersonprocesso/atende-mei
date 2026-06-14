@@ -3,7 +3,7 @@
 # Roteamento e TLS (Let's Encrypt) são feitos pelo Traefik via labels.
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -30,8 +30,16 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: 7d
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
-      WHATSAPP_PROVIDER: mock
-      AI_PROVIDER: mock
+      WHATSAPP_PROVIDER: ${WHATSAPP_PROVIDER:-mock}
+      # IA conversacional (OpenRouter/DeepSeek) + memória (pgvector RAG)
+      AI_PROVIDER: ${AI_PROVIDER:-openrouter}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-deepseek/deepseek-chat}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      EMBEDDINGS_API_URL: ${EMBEDDINGS_API_URL:-http://76.13.224.42:11434/v1/embeddings}
+      EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL:-nomic-embed-text}
+      EMBEDDINGS_API_KEY: ${EMBEDDINGS_API_KEY:-}
+      EMBEDDINGS_DIM: ${EMBEDDINGS_DIM:-768}
       PAYMENT_PROVIDER: mock
       # fiscal: 'fake' por padrão; mude para 'omie' quando a config fiscal estiver pronta
       FISCAL_PROVIDER: ${FISCAL_PROVIDER:-fake}

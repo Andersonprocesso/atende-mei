@@ -138,6 +138,51 @@ export class ClientesService {
     return cliente;
   }
 
+  // Importa/atualiza uma lista de MEIs (ex.: casados na Omie). Idempotente por CNPJ.
+  async importar(
+    tenantId: string,
+    usuarioId: string,
+    itens: {
+      cnpj: string;
+      razaoSocial?: string;
+      nomeFantasia?: string;
+      cpfProprietario?: string;
+      omieCodigoCliente?: string;
+    }[],
+  ) {
+    let criados = 0;
+    let atualizados = 0;
+    for (const it of itens) {
+      const dados = {
+        razaoSocial: it.razaoSocial,
+        nomeFantasia: it.nomeFantasia,
+        cpfProprietario: it.cpfProprietario,
+        omieCodigoCliente: it.omieCodigoCliente,
+      };
+      const existente = await this.prisma.cliente.findUnique({
+        where: { tenantId_cnpj: { tenantId, cnpj: it.cnpj } },
+        select: { id: true },
+      });
+      if (existente) {
+        await this.prisma.cliente.update({ where: { id: existente.id }, data: dados });
+        atualizados++;
+      } else {
+        await this.prisma.cliente.create({
+          data: { tenantId, cnpj: it.cnpj, ...dados },
+        });
+        criados++;
+      }
+    }
+    await this.audit.log({
+      tenantId,
+      usuarioId,
+      acao: 'cliente.importar',
+      entidade: 'Cliente',
+      dados: { total: itens.length, criados, atualizados },
+    });
+    return { total: itens.length, criados, atualizados };
+  }
+
   private async ensureExists(tenantId: string, id: string) {
     const c = await this.prisma.cliente.findFirst({
       where: { id, tenantId },

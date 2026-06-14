@@ -148,8 +148,11 @@ model Cliente {
   razaoSocial    String?
   nomeFantasia   String?
   nomeContato    String?
-  telefoneWa     String // número do WhatsApp (E.164)
+  // opcional: um MEI importado (ex.: da Omie) pode ainda não ter WhatsApp vinculado
+  telefoneWa     String? // número do WhatsApp (E.164)
   email          String?
+  cpfProprietario String? // CPF do titular do MEI (usado em alguns serviços)
+  omieCodigoCliente String? // vínculo com o cadastro na Omie
   situacaoFiscal SituacaoFiscal @default(DESCONHECIDA)
 
   // Certificado Digital A1 e-CNPJ — apenas metadados aqui.

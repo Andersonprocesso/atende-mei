@@ -13,6 +13,7 @@ import { ClientesService } from './clientes.service';
 import { CreateClienteDto } from './dto/create-cliente.dto';
 import { UpdateClienteDto } from './dto/update-cliente.dto';
 import { QueryClientesDto } from './dto/query-clientes.dto';
+import { ImportarClientesDto } from './dto/importar-clientes.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuthUser } from '../../common/auth-user';
@@ -35,6 +36,12 @@ export class ClientesController {
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateClienteDto) {
     return this.clientes.create(user.tenantId, user.sub, dto);
+  }
+
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  @Post('importar')
+  importar(@CurrentUser() user: AuthUser, @Body() dto: ImportarClientesDto) {
+    return this.clientes.importar(user.tenantId, user.sub, dto.clientes);
   }
 
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)

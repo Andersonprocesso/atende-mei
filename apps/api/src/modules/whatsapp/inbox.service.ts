@@ -1,4 +1,9 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   ConversaStatus,
   DirecaoMensagem,
@@ -66,6 +71,9 @@ export class InboxService {
     texto: string,
   ) {
     const conversa = await this.ensureConversa(tenantId, conversaId);
+    if (!conversa.cliente.telefoneWa) {
+      throw new BadRequestException('Cliente sem número de WhatsApp vinculado');
+    }
 
     const enviada = await this.whatsapp.enviarTexto(
       conversa.cliente.telefoneWa,

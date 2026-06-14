@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Clientes from './pages/Clientes';
 import ClienteDetalhe from './pages/ClienteDetalhe';
 import Serpro from './pages/Serpro';
+import Whatsapp from './pages/Whatsapp';
 import EmBreve from './pages/EmBreve';
 
 function Protegido({ children }: { children: JSX.Element }) {
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="/inbox" element={<EmBreve titulo="Inbox WhatsApp" etapa="etapa 6" />} />
             <Route path="/emissoes" element={<EmBreve titulo="Emissões" etapa="etapa 4" />} />
             <Route path="/serpro" element={<Serpro />} />
+            <Route path="/whatsapp" element={<Whatsapp />} />
             <Route path="/planos" element={<EmBreve titulo="Planos & Mensalidades" etapa="etapa 5" />} />
             <Route path="/equipe" element={<EmBreve titulo="Equipe" etapa="etapa 2 (API pronta)" />} />
           </Route>

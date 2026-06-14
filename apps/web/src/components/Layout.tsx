@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth';
 const nav = [
   { to: '/', label: 'Dashboard', end: true },
   { to: '/clientes', label: 'Carteira de MEIs' },
+  { to: '/whatsapp', label: 'Conexão WhatsApp' },
   { to: '/inbox', label: 'Inbox WhatsApp' },
   { to: '/emissoes', label: 'Emissões' },
   { to: '/serpro', label: 'SERPRO / DAS' },

@@ -2,30 +2,35 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { WHATSAPP_PROVIDER } from './whatsapp-provider.interface';
 import { MockWhatsappProvider } from './mock-whatsapp.provider';
+import { BaileysWhatsappProvider } from './baileys-whatsapp.provider';
 
-// Seleciona o adapter de WhatsApp conforme WHATSAPP_PROVIDER.
-// "cloud-api" (Meta) deve implementar WhatsappProvider e ser plugado aqui.
+// Seleciona o adapter de WhatsApp conforme WHATSAPP_PROVIDER (mock | baileys).
 @Module({
   providers: [
     MockWhatsappProvider,
+    BaileysWhatsappProvider,
     {
       provide: WHATSAPP_PROVIDER,
-      inject: [ConfigService, MockWhatsappProvider],
-      useFactory: (config: ConfigService, mock: MockWhatsappProvider) => {
+      inject: [ConfigService, MockWhatsappProvider, BaileysWhatsappProvider],
+      useFactory: (
+        config: ConfigService,
+        mock: MockWhatsappProvider,
+        baileys: BaileysWhatsappProvider,
+      ) => {
         const provider = config.get<string>('WHATSAPP_PROVIDER') ?? 'mock';
         switch (provider) {
+          case 'baileys':
+            return baileys;
           case 'mock':
             return mock;
           default:
             throw new Error(
-              `WHATSAPP_PROVIDER="${provider}" ainda não implementado. ` +
-                `Implemente um WhatsappProvider e registre-o aqui.`,
+              `WHATSAPP_PROVIDER="${provider}" não implementado. Use mock | baileys.`,
             );
         }
       },
     },
   ],
-  // exporta também o mock concreto para o controller de inspeção da outbox (dev)
-  exports: [WHATSAPP_PROVIDER, MockWhatsappProvider],
+  exports: [WHATSAPP_PROVIDER, MockWhatsappProvider, BaileysWhatsappProvider],
 })
 export class WhatsappProviderModule {}

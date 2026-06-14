@@ -114,8 +114,24 @@ model Tenant {
   pagamentos  Pagamento[]
   auditorias  AuditLog[]
   credencialSerpro CredencialSerpro?
+  whatsappConexao  WhatsappConexao?
 
   @@map("tenants")
+}
+
+// Estado da conexão Baileys (WhatsApp) do tenant.
+model WhatsappConexao {
+  id           String   @id @default(uuid())
+  tenantId     String   @unique
+  status       String   @default("DESCONECTADO") // DESCONECTADO | QRCODE | CONECTADO
+  numero       String? // número conectado (E.164)
+  qrcode       String? // data URL do QR atual
+  atualizadoEm DateTime @updatedAt
+  criadoEm     DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("whatsapp_conexoes")
 }
 
 // Credenciais SERPRO (Integra Contador) por tenant, cifradas em repouso.

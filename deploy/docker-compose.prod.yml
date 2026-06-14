@@ -66,6 +66,7 @@ services:
       - atendemei_net
     volumes:
       - ./certs:/certs:ro
+      - ./wa-sessions:/app/sessions
     depends_on:
       postgres:
         condition: service_healthy

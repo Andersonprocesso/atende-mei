@@ -172,21 +172,12 @@ export class BaileysWhatsappProvider implements WhatsappProvider {
       return;
     }
 
-    // Resolve o número real: prioriza senderPn (telefone) quando o jid é @lid.
+    // Identidade do cliente: usa o telefone real (senderPn) quando disponível.
     const senderPn: string = m.key.senderPn ?? m.key.participantPn ?? '';
-    let numero: string;
-    let replyJid: string;
-    if (senderPn) {
-      numero = senderPn.replace(/\D/g, '');
-      replyJid = `${numero}@s.whatsapp.net`;
-    } else if (jid.endsWith('@s.whatsapp.net')) {
-      numero = jid.split('@')[0];
-      replyJid = jid;
-    } else {
-      // @lid sem telefone: usa o id do lid como identificador e responde no próprio @lid
-      numero = jid.split('@')[0];
-      replyJid = jid;
-    }
+    const numero = (senderPn || jid).split('@')[0].replace(/\D/g, '');
+    // Resposta SEMPRE no mesmo JID em que a pessoa escreveu (mantém a sessão
+    // Signal consistente — responder em outro endereço causa "Bad MAC").
+    const replyJid = jid;
 
     const telefoneWa = `+${numero}`;
     this.jidPorNumero.set(telefoneWa, replyJid);

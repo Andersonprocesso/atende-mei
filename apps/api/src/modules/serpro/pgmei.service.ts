@@ -83,6 +83,20 @@ export class PgmeiService {
 
     const det = doc?.detalhamento ?? doc;
 
+    // DEBUG temporário: estrutura da resposta (sem o PDF) para acertar o parser
+    try {
+      const semPdf = (o: any) => {
+        const c = JSON.parse(JSON.stringify(o ?? {}));
+        if (c?.pdf) c.pdf = `<${String(c.pdf).length} bytes>`;
+        return c;
+      };
+      this.logger.log(
+        `DEBUG dados-keys=${JSON.stringify(Object.keys(dados ?? {}))} det=${JSON.stringify(semPdf(det)).slice(0, 800)}`,
+      );
+    } catch {
+      /* ignore */
+    }
+
     const valor =
       det?.valores?.total ??
       det?.valorTotalDoDocumento ??

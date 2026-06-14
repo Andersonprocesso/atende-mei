@@ -2,8 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { SerproClient } from './serpro.client';
 
 const ID_SISTEMA = 'PGMEI';
-const SERV_GERAR_DAS_PDF = 'GERARDASPDF21'; // retorna o PDF (base64)
-const SERV_GERAR_DAS_CODBARRA = 'GERARDASCODBARRA21'; // retorna detalhamento (valor, venc, linha)
+const SERV_GERAR_DAS_PDF = 'GERARDASPDF21'; // retorna PDF + detalhamento (valores, vencimento)
 
 export interface DasMei {
   competencia: string; // 'AAAA-MM'
@@ -31,8 +30,8 @@ export class PgmeiService {
     const pa = competencia.replace('-', ''); // AAAAMM
     const dados = JSON.stringify({ periodoApuracao: pa });
 
-    // PDF da guia
-    const respPdf = await this.serpro.chamar(
+    // GERARDASPDF21 já retorna o PDF E o detalhamento (valores, vencimento).
+    const resp = await this.serpro.chamar(
       tenantId,
       'Emitir',
       cnpj,
@@ -40,31 +39,12 @@ export class PgmeiService {
       SERV_GERAR_DAS_PDF,
       dados,
     );
-    const base = this.parse(competencia, respPdf);
-
-    // detalhamento (valor, vencimento, linha digitável) — best-effort
-    try {
-      const respDet = await this.serpro.chamar(
-        tenantId,
-        'Emitir',
-        cnpj,
-        ID_SISTEMA,
-        SERV_GERAR_DAS_CODBARRA,
-        dados,
-      );
-      const det = this.parse(competencia, respDet);
-      base.valorTotal = base.valorTotal ?? det.valorTotal;
-      base.vencimento = base.vencimento ?? det.vencimento;
-      base.linhaDigitavel = base.linhaDigitavel ?? det.linhaDigitavel;
-    } catch (e) {
-      this.logger.warn(`Detalhamento da DAS indisponível: ${e}`);
-    }
-
-    return base;
+    return this.parse(competencia, resp);
   }
 
-  // A resposta traz `dados` como string JSON; extraímos PDF + detalhes de
-  // forma defensiva (o shape exato varia conforme a versão do serviço).
+  // A resposta traz `dados` como string JSON, com o detalhamento aninhado
+  // (ex.: dados[0] = { valores, dataVencimento, pdf, ... }). Buscamos de forma
+  // robusta o nó com `valores` e o campo `pdf` em qualquer profundidade.
   private parse(competencia: string, resp: any): DasMei {
     let dados: any = resp?.dados;
     if (typeof dados === 'string') {
@@ -75,46 +55,54 @@ export class PgmeiService {
       }
     }
 
-    const doc =
-      dados?.documentos?.[0] ??
-      (Array.isArray(dados) ? dados[0] : undefined) ??
-      dados ??
-      {};
-
-    const det = doc?.detalhamento ?? doc;
-
-    // DEBUG temporário: estrutura da resposta (sem o PDF) para acertar o parser
-    try {
-      const semPdf = (o: any) => {
-        const c = JSON.parse(JSON.stringify(o ?? {}));
-        if (c?.pdf) c.pdf = `<${String(c.pdf).length} bytes>`;
-        return c;
-      };
-      this.logger.log(
-        `DEBUG dados-keys=${JSON.stringify(Object.keys(dados ?? {}))} det=${JSON.stringify(semPdf(det)).slice(0, 800)}`,
-      );
-    } catch {
-      /* ignore */
-    }
+    const det = deepFind(
+      dados,
+      (n) => !!n && typeof n === 'object' && !!(n as any).valores,
+    ) as any;
+    const pdf = deepFindString(dados, 'pdf');
 
     const valor =
       det?.valores?.total ??
       det?.valorTotalDoDocumento ??
       det?.valorTotal ??
       undefined;
-
-    const vencRaw = det?.dataVencimento ?? det?.dataDeVencimento ?? det?.dataLimiteAcolhimento;
+    const vencRaw =
+      det?.dataVencimento ?? det?.dataDeVencimento ?? det?.dataLimiteAcolhimento;
 
     return {
       competencia,
       valorTotal: valor != null ? Number(valor) : undefined,
       vencimento: normalizarData(vencRaw),
       linhaDigitavel:
-        det?.linhaDigitavel ?? det?.codigoDeBarras ?? det?.codigoBarras ?? undefined,
-      pdfBase64: doc?.pdf ?? dados?.pdf ?? undefined,
+        det?.linhaDigitavel ?? det?.codigoDeBarras ?? det?.numeroDocumento ?? undefined,
+      pdfBase64: pdf,
       raw: resp,
     };
   }
+}
+
+// Busca em profundidade o primeiro nó que satisfaz o predicado.
+function deepFind(obj: any, pred: (n: unknown) => boolean): unknown {
+  if (pred(obj)) return obj;
+  if (obj && typeof obj === 'object') {
+    for (const v of Object.values(obj)) {
+      const r = deepFind(v, pred);
+      if (r !== undefined) return r;
+    }
+  }
+  return undefined;
+}
+
+// Busca em profundidade o primeiro valor string de uma chave (ex.: 'pdf').
+function deepFindString(obj: any, key: string): string | undefined {
+  if (obj && typeof obj === 'object') {
+    if (typeof obj[key] === 'string' && obj[key].length > 50) return obj[key];
+    for (const v of Object.values(obj)) {
+      const r = deepFindString(v, key);
+      if (r !== undefined) return r;
+    }
+  }
+  return undefined;
 }
 
 // Aceita 'AAAA-MM-DD', 'AAAAMMDD', 'DDMMAAAA' e devolve ISO (YYYY-MM-DD) ou undefined.

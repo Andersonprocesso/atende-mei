@@ -72,7 +72,7 @@ export class SerproClient {
     }
     if (resp.status >= 400) {
       throw new SerproError(
-        `${idSistema}/${idServico} HTTP ${resp.status}: ${texto.slice(0, 1500)}`,
+        `${idSistema}/${idServico} HTTP ${resp.status}: ${texto.slice(0, 600)}`,
       );
     }
     try {

@@ -104,7 +104,8 @@ export class SerproController {
 
     const das = await this.pgmei.gerarDas(user.tenantId, cliente.cnpj, competencia);
 
-    const venc = das.vencimento ? new Date(das.vencimento) : new Date();
+    const vencParsed = das.vencimento ? new Date(das.vencimento) : null;
+    const venc = vencParsed && !isNaN(vencParsed.getTime()) ? vencParsed : new Date();
     const guia = await this.prisma.guiaDAS.upsert({
       where: { clienteId_competencia: { clienteId: cliente.id, competencia } },
       create: {

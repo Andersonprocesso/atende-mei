@@ -104,6 +104,8 @@ export default function ClienteDetalhe() {
         )}
       </Secao>
 
+      <GerarDasMei clienteId={cliente.id} />
+
       <CertificadoMei cliente={cliente} onSalvo={carregar} />
 
       {editando && (
@@ -117,6 +119,86 @@ export default function ClienteDetalhe() {
         />
       )}
     </div>
+  );
+}
+
+function GerarDasMei({ clienteId }: { clienteId: string }) {
+  const hoje = new Date();
+  const padrao = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+  const [competencia, setCompetencia] = useState(padrao);
+  const [gerando, setGerando] = useState(false);
+  const [res, setRes] = useState<{
+    valorTotal?: number;
+    vencimento?: string;
+    linhaDigitavel?: string;
+    pdfBase64?: string;
+  } | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function gerar() {
+    setGerando(true);
+    setErro(null);
+    setRes(null);
+    try {
+      const r = await api.post<typeof res>('/serpro/das', { clienteId, competencia });
+      setRes(r);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Erro ao gerar DAS');
+    } finally {
+      setGerando(false);
+    }
+  }
+
+  function baixarPdf() {
+    if (!res?.pdfBase64) return;
+    const bin = atob(res.pdfBase64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `DAS-${competencia}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <Secao titulo="DAS-MEI (SERPRO)">
+      <div className="flex items-end gap-3 flex-wrap">
+        <label className="text-sm">
+          <span className="block font-medium mb-1">Competência</span>
+          <input
+            type="month"
+            value={competencia}
+            onChange={(e) => setCompetencia(e.target.value)}
+            className="input"
+          />
+        </label>
+        <button
+          onClick={gerar}
+          disabled={gerando}
+          className="bg-brand hover:bg-brand-dark text-white rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-60"
+        >
+          {gerando ? 'Gerando…' : 'Gerar DAS'}
+        </button>
+      </div>
+
+      {erro && <div className="text-red-600 text-sm mt-3">{erro}</div>}
+      {res && (
+        <div className="mt-4 text-sm space-y-1">
+          <div>✅ Guia gerada{res.valorTotal ? ` — R$ ${Number(res.valorTotal).toFixed(2)}` : ''}</div>
+          {res.vencimento && <div>Vencimento: {new Date(res.vencimento).toLocaleDateString('pt-BR')}</div>}
+          {res.linhaDigitavel && (
+            <div className="font-mono text-xs break-all">Linha: {res.linhaDigitavel}</div>
+          )}
+          {res.pdfBase64 && (
+            <button onClick={baixarPdf} className="mt-2 text-brand hover:underline">
+              ⬇ Baixar PDF da DAS
+            </button>
+          )}
+        </div>
+      )}
+    </Secao>
   );
 }
 

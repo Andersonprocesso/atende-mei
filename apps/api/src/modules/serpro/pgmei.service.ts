@@ -2,7 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { SerproClient } from './serpro.client';
 
 const ID_SISTEMA = 'PGMEI';
-const SERV_GERAR_DAS = 'GERARDASPDF21';
+const SERV_GERAR_DAS_PDF = 'GERARDASPDF21'; // retorna o PDF (base64)
+const SERV_GERAR_DAS_CODBARRA = 'GERARDASCODBARRA21'; // retorna detalhamento (valor, venc, linha)
 
 export interface DasMei {
   competencia: string; // 'AAAA-MM'
@@ -30,16 +31,36 @@ export class PgmeiService {
     const pa = competencia.replace('-', ''); // AAAAMM
     const dados = JSON.stringify({ periodoApuracao: pa });
 
-    const resp = await this.serpro.chamar(
+    // PDF da guia
+    const respPdf = await this.serpro.chamar(
       tenantId,
       'Emitir',
       cnpj,
       ID_SISTEMA,
-      SERV_GERAR_DAS,
+      SERV_GERAR_DAS_PDF,
       dados,
     );
+    const base = this.parse(competencia, respPdf);
 
-    return this.parse(competencia, resp);
+    // detalhamento (valor, vencimento, linha digitável) — best-effort
+    try {
+      const respDet = await this.serpro.chamar(
+        tenantId,
+        'Emitir',
+        cnpj,
+        ID_SISTEMA,
+        SERV_GERAR_DAS_CODBARRA,
+        dados,
+      );
+      const det = this.parse(competencia, respDet);
+      base.valorTotal = base.valorTotal ?? det.valorTotal;
+      base.vencimento = base.vencimento ?? det.vencimento;
+      base.linhaDigitavel = base.linhaDigitavel ?? det.linhaDigitavel;
+    } catch (e) {
+      this.logger.warn(`Detalhamento da DAS indisponível: ${e}`);
+    }
+
+    return base;
   }
 
   // A resposta traz `dados` como string JSON; extraímos PDF + detalhes de
@@ -68,14 +89,30 @@ export class PgmeiService {
       det?.valorTotal ??
       undefined;
 
+    const vencRaw = det?.dataVencimento ?? det?.dataDeVencimento ?? det?.dataLimiteAcolhimento;
+
     return {
       competencia,
       valorTotal: valor != null ? Number(valor) : undefined,
-      vencimento: det?.dataVencimento ?? det?.dataDeVencimento ?? undefined,
+      vencimento: normalizarData(vencRaw),
       linhaDigitavel:
         det?.linhaDigitavel ?? det?.codigoDeBarras ?? det?.codigoBarras ?? undefined,
       pdfBase64: doc?.pdf ?? dados?.pdf ?? undefined,
       raw: resp,
     };
   }
+}
+
+// Aceita 'AAAA-MM-DD', 'AAAAMMDD', 'DDMMAAAA' e devolve ISO (YYYY-MM-DD) ou undefined.
+function normalizarData(v: unknown): string | undefined {
+  if (v == null) return undefined;
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const d = s.replace(/\D/g, '');
+  if (d.length === 8) {
+    // AAAAMMDD vs DDMMAAAA
+    if (Number(d.slice(0, 4)) > 1900) return `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
+    return `${d.slice(4, 8)}-${d.slice(2, 4)}-${d.slice(0, 2)}`;
+  }
+  return undefined;
 }

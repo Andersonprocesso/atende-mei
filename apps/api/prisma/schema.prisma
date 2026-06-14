@@ -1,0 +1,375 @@
+// Atende MEI — schema multi-tenant
+// Cada Contabilidade (Tenant) é isolada. Todo dado de negócio carrega tenantId.
+// Datasource e generator
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── Enums ───────────────────────────
+
+enum UserRole {
+  ADMIN // dono da contabilidade
+  CONTADOR
+  ATENDENTE
+}
+
+enum SituacaoFiscal {
+  REGULAR
+  PENDENTE
+  IRREGULAR
+  DESCONHECIDA
+}
+
+enum PlanoTier {
+  GRATIS
+  MEI_PLUS // MEI+
+  MEI_PLUS_PLUS // MEI++
+}
+
+enum AssinaturaStatus {
+  ATIVA
+  INADIMPLENTE
+  CANCELADA
+  TRIAL
+}
+
+enum CanalConversa {
+  WHATSAPP
+}
+
+enum DirecaoMensagem {
+  ENTRADA // cliente -> sistema
+  SAIDA // sistema -> cliente
+}
+
+enum RemetenteTipo {
+  CLIENTE
+  BOT
+  ATENDENTE // contador interveio (handoff)
+}
+
+enum ConversaStatus {
+  BOT // máquina de estados conduzindo
+  HUMANO // handoff: contador assumiu
+  ENCERRADA
+}
+
+enum NotaFiscalStatus {
+  RASCUNHO
+  EMITIDA
+  CANCELADA
+  ERRO
+}
+
+enum GuiaDASStatus {
+  GERADA
+  PAGA
+  VENCIDA
+  ERRO
+}
+
+enum PagamentoTipo {
+  MENSALIDADE // assinatura do plano
+  AVULSO
+}
+
+enum PagamentoStatus {
+  PENDENTE
+  PAGO
+  FALHOU
+  ESTORNADO
+}
+
+enum MetodoPagamento {
+  PIX
+  CARTAO
+  BOLETO
+}
+
+// ─────────────────────────── Tenant / Usuários ───────────────────────────
+
+model Tenant {
+  id           String   @id @default(uuid())
+  nome         String // nome da contabilidade
+  cnpj         String?  @unique
+  email        String?
+  telefone     String?
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  usuarios    Usuario[]
+  clientes    Cliente[]
+  conversas   Conversa[]
+  mensagens   Mensagem[]
+  notas       NotaFiscal[]
+  guias       GuiaDAS[]
+  planos      Plano[]
+  assinaturas Assinatura[]
+  pagamentos  Pagamento[]
+  auditorias  AuditLog[]
+
+  @@map("tenants")
+}
+
+model Usuario {
+  id           String   @id @default(uuid())
+  tenantId     String
+  nome         String
+  email        String
+  senhaHash    String
+  role         UserRole @default(CONTADOR)
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  tenant            Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversasAtribuidas Conversa[] @relation("ConversaAtendente")
+  auditorias        AuditLog[]
+
+  // email único por tenant (mesmo email pode existir em tenants diferentes)
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("usuarios")
+}
+
+// ─────────────────────────── Cliente (o MEI) ───────────────────────────
+
+model Cliente {
+  id             String         @id @default(uuid())
+  tenantId       String
+  // opcional: um lead pode chegar pelo WhatsApp e informar o CNPJ no onboarding
+  cnpj           String?
+  razaoSocial    String?
+  nomeFantasia   String?
+  nomeContato    String?
+  telefoneWa     String // número do WhatsApp (E.164)
+  email          String?
+  situacaoFiscal SituacaoFiscal @default(DESCONHECIDA)
+
+  // Certificado Digital A1 e-CNPJ — apenas metadados aqui.
+  // O arquivo/senha devem ser guardados cifrados em cofre dedicado (ver README/LGPD).
+  certificadoNome      String?
+  certificadoValidade  DateTime?
+  certificadoRefCofre  String? // ponteiro para secret manager, nunca o conteúdo
+
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversas   Conversa[]
+  notas       NotaFiscal[]
+  guias       GuiaDAS[]
+  assinaturas Assinatura[]
+  pagamentos  Pagamento[]
+
+  @@unique([tenantId, cnpj])
+  @@unique([tenantId, telefoneWa])
+  @@index([tenantId])
+  @@index([tenantId, situacaoFiscal])
+  @@map("clientes")
+}
+
+// ─────────────────────────── Conversas WhatsApp ───────────────────────────
+
+model Conversa {
+  id            String         @id @default(uuid())
+  tenantId      String
+  clienteId     String
+  canal         CanalConversa  @default(WHATSAPP)
+  status        ConversaStatus @default(BOT)
+  // estado da máquina de estados (ex.: "emitir_nfse:aguardando_valor")
+  estado        String?
+  // contexto/slots coletados no fluxo atual
+  contexto      Json?
+  atendenteId   String? // usuário do painel que assumiu (handoff)
+  ultimaMsgEm   DateTime?
+  criadoEm      DateTime       @default(now())
+  atualizadoEm  DateTime       @updatedAt
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cliente    Cliente    @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  atendente  Usuario?   @relation("ConversaAtendente", fields: [atendenteId], references: [id])
+  mensagens  Mensagem[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([clienteId])
+  @@map("conversas")
+}
+
+model Mensagem {
+  id            String          @id @default(uuid())
+  tenantId      String
+  conversaId    String
+  direcao       DirecaoMensagem
+  remetente     RemetenteTipo
+  // id da mensagem no provedor (WhatsApp) — usado para idempotência de webhook
+  externalId    String?
+  conteudo      String
+  // anexos: [{tipo, url, mime}]
+  anexos        Json?
+  criadoEm      DateTime        @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversa Conversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, externalId])
+  @@index([conversaId])
+  @@index([tenantId])
+  @@map("mensagens")
+}
+
+// ─────────────────────────── Documentos fiscais ───────────────────────────
+
+model NotaFiscal {
+  id            String           @id @default(uuid())
+  tenantId      String
+  clienteId     String
+  numero        String?
+  tomadorNome   String
+  tomadorDoc    String? // CPF/CNPJ do tomador
+  descricao     String
+  valor         Decimal          @db.Decimal(12, 2)
+  status        NotaFiscalStatus @default(RASCUNHO)
+  pdfUrl        String?
+  // resposta crua do emissor municipal/nacional (auditoria)
+  providerRef   String?
+  emitidaEm     DateTime?
+  criadoEm      DateTime         @default(now())
+  atualizadoEm  DateTime         @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([clienteId])
+  @@map("notas_fiscais")
+}
+
+model GuiaDAS {
+  id              String        @id @default(uuid())
+  tenantId        String
+  clienteId       String
+  competencia     String // "AAAA-MM"
+  valor           Decimal       @db.Decimal(12, 2)
+  vencimento      DateTime
+  linhaDigitavel  String?
+  pdfUrl          String?
+  status          GuiaDASStatus @default(GERADA)
+  providerRef     String?
+  pagaEm          DateTime?
+  criadoEm        DateTime      @default(now())
+  atualizadoEm    DateTime      @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@unique([clienteId, competencia])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("guias_das")
+}
+
+// ─────────────────────────── Planos / Assinaturas / Pagamentos ───────────────────────────
+
+model Plano {
+  id            String    @id @default(uuid())
+  tenantId      String
+  tier          PlanoTier
+  nome          String
+  precoMensal   Decimal   @db.Decimal(10, 2)
+  // limites/features do plano (ex.: { notasPorMes: 10, consultorIA: true })
+  recursos      Json?
+  ativo         Boolean   @default(true)
+  criadoEm      DateTime  @default(now())
+  atualizadoEm  DateTime  @updatedAt
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assinaturas Assinatura[]
+
+  @@unique([tenantId, tier])
+  @@index([tenantId])
+  @@map("planos")
+}
+
+model Assinatura {
+  id                  String           @id @default(uuid())
+  tenantId            String
+  clienteId           String
+  planoId             String
+  status              AssinaturaStatus @default(TRIAL)
+  // referência da assinatura recorrente no gateway
+  gatewayRef          String?
+  inicioEm            DateTime         @default(now())
+  proximaCobrancaEm   DateTime?
+  canceladaEm         DateTime?
+  criadoEm            DateTime         @default(now())
+  atualizadoEm        DateTime         @updatedAt
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cliente    Cliente     @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  plano      Plano       @relation(fields: [planoId], references: [id])
+  pagamentos Pagamento[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([clienteId])
+  @@map("assinaturas")
+}
+
+model Pagamento {
+  id            String          @id @default(uuid())
+  tenantId      String
+  clienteId     String
+  assinaturaId  String?
+  tipo          PagamentoTipo   @default(MENSALIDADE)
+  metodo        MetodoPagamento @default(PIX)
+  valor         Decimal         @db.Decimal(12, 2)
+  status        PagamentoStatus @default(PENDENTE)
+  // o sistema só gera/armazena o LINK de checkout do gateway, nunca dados de cartão
+  checkoutUrl   String?
+  gatewayRef    String? // id da cobrança no gateway (idempotência de webhook)
+  pagoEm        DateTime?
+  criadoEm      DateTime        @default(now())
+  atualizadoEm  DateTime        @updatedAt
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cliente    Cliente     @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  assinatura Assinatura? @relation(fields: [assinaturaId], references: [id])
+
+  @@unique([tenantId, gatewayRef])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([clienteId])
+  @@map("pagamentos")
+}
+
+// ─────────────────────────── Auditoria (LGPD) ───────────────────────────
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  tenantId    String
+  usuarioId   String? // null = ação do sistema/bot
+  acao        String // ex.: "cliente.criar", "nfse.emitir", "pagamento.webhook"
+  entidade    String? // ex.: "Cliente"
+  entidadeId  String?
+  // metadados não-sensíveis da ação
+  dados       Json?
+  ip          String?
+  criadoEm    DateTime @default(now())
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  usuario Usuario? @relation(fields: [usuarioId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, entidade, entidadeId])
+  @@map("audit_logs")
+}

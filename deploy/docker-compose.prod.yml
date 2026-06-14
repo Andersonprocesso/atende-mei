@@ -1,0 +1,81 @@
+# Compose de produção do Atende MEI — VPS 653140, atrás do Traefik existente.
+# As imagens são buildadas direto do repositório público no GitHub (git context).
+# Roteamento e TLS (Let's Encrypt) são feitos pelo Traefik via labels.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - atendemei_pg:/var/lib/postgresql/data
+    networks:
+      - atendemei_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: https://github.com/Andersonprocesso/atende-mei.git#main:apps/api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_PORT: "3333"
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: 7d
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      WHATSAPP_PROVIDER: mock
+      AI_PROVIDER: mock
+      PAYMENT_PROVIDER: mock
+      FISCAL_PROVIDER: fake
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN}
+      SEED_ON_BOOT: "true"
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
+    networks:
+      - atendemei_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && node dist/main.js"
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=atendemei_net
+      - "traefik.http.routers.atendemei-api.rule=Host(`atendemei.escondigital.com.br`) && PathPrefix(`/api`)"
+      - traefik.http.routers.atendemei-api.entrypoints=websecure
+      - traefik.http.routers.atendemei-api.tls.certresolver=letsencrypt
+      - traefik.http.routers.atendemei-api.priority=20
+      - traefik.http.services.atendemei-api.loadbalancer.server.port=3333
+
+  web:
+    build:
+      context: https://github.com/Andersonprocesso/atende-mei.git#main:apps/web
+      args:
+        VITE_API_URL: https://atendemei.escondigital.com.br
+    restart: unless-stopped
+    networks:
+      - atendemei_net
+    depends_on:
+      - api
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=atendemei_net
+      - "traefik.http.routers.atendemei-web.rule=Host(`atendemei.escondigital.com.br`)"
+      - traefik.http.routers.atendemei-web.entrypoints=websecure
+      - traefik.http.routers.atendemei-web.tls.certresolver=letsencrypt
+      - traefik.http.routers.atendemei-web.priority=10
+      - traefik.http.services.atendemei-web.loadbalancer.server.port=80
+
+networks:
+  atendemei_net:
+    name: atendemei_net
+    driver: bridge
+
+volumes:
+  atendemei_pg:

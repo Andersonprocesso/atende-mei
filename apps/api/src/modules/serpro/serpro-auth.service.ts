@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as https from 'https';
 import * as fs from 'fs';
+import { CredenciaisSerproService } from './credenciais-serpro.service';
 
 export class SerproAuthError extends Error {}
 
@@ -10,85 +11,119 @@ interface Tokens {
   jwt_token?: string;
 }
 
-// Autenticação no Integra Contador (SERPRO).
-// Fluxo: POST {AUTH_URL} com Basic Auth (consumer key:secret), header
-// Role-Type: TERCEIROS, grant_type=client_credentials e mTLS com o e-CNPJ
-// (certificado A1 da Dias de Paula). Devolve access_token + jwt_token,
-// ambos necessários nas chamadas. Cache em memória até expirar.
+interface CredsResolvidas {
+  consumerKey: string;
+  consumerSecret: string;
+  pfx: Buffer;
+  senha: string;
+  contratanteCnpj?: string;
+  autorCnpj?: string;
+}
+
+// Autenticação no Integra Contador (SERPRO), por tenant.
+// As credenciais vêm do banco (subidas pelo painel, cifradas) e, na ausência,
+// caem para variáveis de ambiente. Fluxo: POST {AUTH_URL} com Basic Auth +
+// Role-Type: TERCEIROS + grant_type=client_credentials + mTLS (e-CNPJ).
 @Injectable()
 export class SerproAuthService {
   private readonly logger = new Logger('SerproAuth');
   private readonly authUrl: string;
-  private readonly key: string;
-  private readonly secret: string;
-  private readonly pfx?: Buffer;
-  private readonly senha: string;
+  private readonly cache = new Map<string, { tokens: Tokens; expiraEm: number }>();
 
-  private cache?: { tokens: Tokens; expiraEm: number };
-
-  constructor(config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly credenciais: CredenciaisSerproService,
+  ) {
     this.authUrl =
       config.get<string>('SERPRO_AUTH_URL') ??
       'https://autenticacao.sapi.serpro.gov.br/authenticate';
-    this.key = config.get<string>('SERPRO_CONSUMER_KEY') ?? '';
-    this.secret = config.get<string>('SERPRO_CONSUMER_SECRET') ?? '';
-    this.senha = config.get<string>('SERPRO_CERT_SENHA') ?? '';
-
-    const b64 = config.get<string>('SERPRO_CERT_PFX_BASE64');
-    const path = config.get<string>('SERPRO_CERT_PFX_PATH');
-    try {
-      if (b64) this.pfx = Buffer.from(b64, 'base64');
-      else if (path && fs.existsSync(path)) this.pfx = fs.readFileSync(path);
-    } catch (e) {
-      this.logger.error(`Falha ao carregar o certificado .pfx: ${e}`);
-    }
   }
 
-  get configurado(): boolean {
-    return !!this.key && !!this.secret && !!this.pfx;
+  // Resolve credenciais: banco (cifrado) tem prioridade; senão, env.
+  async resolver(tenantId: string): Promise<CredsResolvidas | null> {
+    const db = await this.credenciais.carregar(tenantId);
+    if (db?.consumerKey && db?.consumerSecret && db?.pfx) {
+      return {
+        consumerKey: db.consumerKey,
+        consumerSecret: db.consumerSecret,
+        pfx: db.pfx,
+        senha: db.senhaPfx ?? '',
+        contratanteCnpj: db.contratanteCnpj,
+        autorCnpj: db.autorCnpj,
+      };
+    }
+
+    // fallback env
+    const key = this.config.get<string>('SERPRO_CONSUMER_KEY');
+    const secret = this.config.get<string>('SERPRO_CONSUMER_SECRET');
+    const pfx = this.pfxFromEnv();
+    if (key && secret && pfx) {
+      return {
+        consumerKey: key,
+        consumerSecret: secret,
+        pfx,
+        senha: this.config.get<string>('SERPRO_CERT_SENHA') ?? '',
+        contratanteCnpj: this.config.get<string>('SERPRO_CONTRATANTE_CNPJ'),
+        autorCnpj: this.config.get<string>('SERPRO_AUTOR_CNPJ'),
+      };
+    }
+    return null;
   }
 
-  async obterTokens(): Promise<Tokens> {
-    if (this.cache && this.cache.expiraEm > Date.now()) {
-      return this.cache.tokens;
-    }
-    if (!this.configurado) {
-      throw new SerproAuthError(
-        'SERPRO não configurado (consumer key/secret e certificado .pfx).',
-      );
-    }
+  async configurado(tenantId: string): Promise<boolean> {
+    return (await this.resolver(tenantId)) !== null;
+  }
 
-    const basic = Buffer.from(`${this.key}:${this.secret}`).toString('base64');
-    const body = 'grant_type=client_credentials';
+  async obterTokens(tenantId: string): Promise<Tokens> {
+    const cached = this.cache.get(tenantId);
+    if (cached && cached.expiraEm > Date.now()) return cached.tokens;
 
-    const resp = await this.postMtls(this.authUrl, body, {
-      Authorization: `Basic ${basic}`,
-      'Role-Type': 'TERCEIROS',
-      'Content-Type': 'application/x-www-form-urlencoded',
-    });
+    const creds = await this.resolver(tenantId);
+    if (!creds) throw new SerproAuthError('SERPRO não configurado para este tenant.');
+
+    const basic = Buffer.from(`${creds.consumerKey}:${creds.consumerSecret}`).toString('base64');
+    const resp = await this.postMtls(
+      this.authUrl,
+      'grant_type=client_credentials',
+      {
+        Authorization: `Basic ${basic}`,
+        'Role-Type': 'TERCEIROS',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      creds.pfx,
+      creds.senha,
+    );
 
     if (resp.status !== 200) {
       throw new SerproAuthError(`HTTP ${resp.status}: ${resp.body.slice(0, 300)}`);
     }
     const json = JSON.parse(resp.body);
-    if (!json.access_token) {
-      throw new SerproAuthError(`Resposta sem access_token`);
-    }
-    const tokens: Tokens = {
-      access_token: json.access_token,
-      jwt_token: json.jwt_token,
-    };
+    if (!json.access_token) throw new SerproAuthError('Resposta sem access_token');
+
+    const tokens: Tokens = { access_token: json.access_token, jwt_token: json.jwt_token };
     const ttl = Math.max((Number(json.expires_in) || 3600) - 60, 60);
-    this.cache = { tokens, expiraEm: Date.now() + ttl * 1000 };
+    this.cache.set(tenantId, { tokens, expiraEm: Date.now() + ttl * 1000 });
     return tokens;
   }
 
-  // POST com mTLS (certificado cliente .pfx). Usa node:https pois o fetch
-  // global não expõe client cert de forma simples.
+  private pfxFromEnv(): Buffer | undefined {
+    const b64 = this.config.get<string>('SERPRO_CERT_PFX_BASE64');
+    const path = this.config.get<string>('SERPRO_CERT_PFX_PATH');
+    try {
+      if (b64) return Buffer.from(b64, 'base64');
+      if (path && fs.existsSync(path)) return fs.readFileSync(path);
+    } catch (e) {
+      this.logger.error(`Falha ao ler .pfx do env: ${e}`);
+    }
+    return undefined;
+  }
+
   private postMtls(
     url: string,
     body: string,
     headers: Record<string, string>,
+    pfx: Buffer,
+    senha: string,
   ): Promise<{ status: number; body: string }> {
     return new Promise((resolve, reject) => {
       const u = new URL(url);
@@ -99,8 +134,8 @@ export class SerproAuthService {
           port: u.port || 443,
           path: u.pathname + u.search,
           headers: { ...headers, 'Content-Length': Buffer.byteLength(body) },
-          pfx: this.pfx,
-          passphrase: this.senha,
+          pfx,
+          passphrase: senha,
         },
         (res) => {
           let data = '';

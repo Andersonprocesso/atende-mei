@@ -22,15 +22,16 @@ export class PgmeiService {
 
   constructor(private readonly serpro: SerproClient) {}
 
-  get configurado() {
-    return this.serpro.configurado;
+  configurado(tenantId: string) {
+    return this.serpro.configurado(tenantId);
   }
 
-  async gerarDas(cnpj: string, competencia: string): Promise<DasMei> {
+  async gerarDas(tenantId: string, cnpj: string, competencia: string): Promise<DasMei> {
     const pa = competencia.replace('-', ''); // AAAAMM
     const dados = JSON.stringify({ periodoApuracao: pa });
 
     const resp = await this.serpro.chamar(
+      tenantId,
       'Emitir',
       cnpj,
       ID_SISTEMA,

@@ -6,6 +6,7 @@ const nav = [
   { to: '/clientes', label: 'Carteira de MEIs' },
   { to: '/inbox', label: 'Inbox WhatsApp' },
   { to: '/emissoes', label: 'Emissões' },
+  { to: '/serpro', label: 'SERPRO / DAS' },
   { to: '/planos', label: 'Planos & Mensalidades' },
   { to: '/equipe', label: 'Equipe' },
 ];

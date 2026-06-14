@@ -113,8 +113,29 @@ model Tenant {
   assinaturas Assinatura[]
   pagamentos  Pagamento[]
   auditorias  AuditLog[]
+  credencialSerpro CredencialSerpro?
 
   @@map("tenants")
+}
+
+// Credenciais SERPRO (Integra Contador) por tenant, cifradas em repouso.
+// Subidas pelo painel (admin) — nunca expostas de volta.
+model CredencialSerpro {
+  id                String   @id @default(uuid())
+  tenantId          String   @unique
+  consumerKeyEnc    String? // AES-GCM (base64)
+  consumerSecretEnc String?
+  pfxEnc            String? // .pfx cifrado (base64)
+  senhaPfxEnc       String?
+  certFingerprint   String? // sha256 do .pfx — identifica sem decifrar
+  contratanteCnpj   String?
+  autorCnpj         String?
+  criadoEm          DateTime @default(now())
+  atualizadoEm      DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("credenciais_serpro")
 }
 
 model Usuario {
